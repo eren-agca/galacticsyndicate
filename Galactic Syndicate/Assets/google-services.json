@@ -15,7 +15,7 @@
       "oauth_client": [
         {
           "client_id": "127973411191-rki27p3tbtq7t2ep6mkl52u8lblrumqf.apps.googleusercontent.com",
-          "client_type": 3,
+          "client_type": 1,
           "android_info": {
             "package_name": "com.erenagca.galacticsyndicate",
             "certificate_hash": "cdcf54a6b32ec6a65283501b8230fc20ee6a6aac"

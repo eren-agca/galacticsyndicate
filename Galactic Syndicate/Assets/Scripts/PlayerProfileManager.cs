@@ -17,6 +17,10 @@ public class PlayerProfileManager : MonoBehaviour
 {
     public static PlayerProfileManager instance;
 
+    // --- İYİLEŞTİRME: Web Client ID'yi Inspector'dan ayarlanabilir yap ---
+    [Header("Google Sign-In Ayarları")]
+    [SerializeField] private string webClientId = "SENİN-WEB-CLIENT-ID-Nİ-BURAYA-YAPIŞTIR";
+
     public string PlayerUsername { get; private set; }
     public string ProfilePictureURL { get; private set; }
 
@@ -334,8 +338,7 @@ public class PlayerProfileManager : MonoBehaviour
             GoogleSignIn.Configuration = new GoogleSignInConfiguration
             {
                 RequestIdToken = true,
-                // YENİ google-services.json DOSYASINDAN ALDIĞIN ID'Yİ BURAYA YAPIŞTIR
-                WebClientId = "127973411191-i38ud9tp4ppl8l5v431iikhmv1i9h4u0.apps.googleusercontent.com" // Örnek ID, sen kendininkini yapıştır.
+                WebClientId = this.webClientId
             };
 
             // 2. Google ile giriş yapmayı dene.
