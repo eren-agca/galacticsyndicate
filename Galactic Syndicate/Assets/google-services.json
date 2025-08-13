@@ -14,7 +14,15 @@
       },
       "oauth_client": [
         {
-          "client_id": "127973411191-rki27p3tbtq7t2ep6mkl52u8lblrumqf.apps.googleusercontent.com",
+          "client_id": "127973411191-a5ctb9eke5klujoahtlkh6pdb0qiq8fj.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.erenagca.galacticsyndicate",
+            "certificate_hash": "a1ae72f133e8438dd262e47c44e2046a2089b7ca"
+          }
+        },
+        {
+          "client_id": "127973411191-crlmvg5r2d43rnsmf2jevstdlprd7r27.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.erenagca.galacticsyndicate",
@@ -35,7 +43,7 @@
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "127973411191-i38ud9tp4ppl8l5v431iikhmv1i9h4u0.apps.googleusercontent.com",
+              "client_id": "127973411191-87odjj5moi6sr8f26jnlg321ftsaqbbl.apps.googleusercontent.com",
               "client_type": 3
             },
             {

@@ -1054,8 +1054,22 @@ export const setPlayerUsername = onCall(async (request) => {
         transaction.update(playerDocRef, {username: newUsername});
       } else {
         // Yeni oyuncu için döküman oluştur.
-        // Bu, "veri bulunamadı" hatasını çözer.
-        transaction.set(playerDocRef, {username: newUsername});
+        // Bu, "veri bulunamadı" hatasını çözer ve oyuncuya varsayılan
+        // başlangıç değerlerini verir.
+        logger.info(`Player doc for ${uid} not found. Creating new document.`);
+        transaction.set(playerDocRef, {
+          username: newUsername,
+          credits: 500, // Varsayılan başlangıç kredisi
+          moveSpeed: 50, // Varsayılan başlangıç hızı
+          maxInventorySlots: 5, // Varsayılan envanter slotu
+          thrustUpgradeCost: 150,
+          inventoryUpgradeCost: 250,
+          inventory: [],
+          activeQuests: [],
+          syndicateId: null,
+          profilePictureUrl: null,
+          lastSeen: FieldValue.serverTimestamp(),
+        });
       }
 
       // Yeni kullanıcı adını 'usernames'

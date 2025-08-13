@@ -25,6 +25,25 @@ public class MainMenu : MonoBehaviour
     [Tooltip("Günün haberlerinin gösterileceği metin alanı.")]
     public TextMeshProUGUI galaxyNewsText;
 
+    void OnEnable()
+    {
+        // Merkezi profil güncelleme olayına abone ol.
+        // Bu, giriş/çıkış yapıldığında menünün anında güncellenmesini sağlar.
+        if (PlayerProfileManager.instance != null)
+        {
+            PlayerProfileManager.instance.OnProfileUpdated += OnProfileUpdatedHandler;
+        }
+    }
+
+    void OnDisable()
+    {
+        // Bellek sızıntılarını önlemek için olay aboneliğini iptal et.
+        if (PlayerProfileManager.instance != null)
+        {
+            PlayerProfileManager.instance.OnProfileUpdated -= OnProfileUpdatedHandler;
+        }
+    }
+
     async void Start()
     {
         primaryActionButton.interactable = false;
@@ -45,45 +64,9 @@ public class MainMenu : MonoBehaviour
         await FirebaseManager.instance.InitializeFirebase();
         if (this == null) return;
 
+        // İlk UI durumunu ayarla ve haberleri çek.
+        _ = UpdateMenuUIAsync();
         await FetchAndDisplayNews();
-        if (this == null) return;
-
-        // --- DEĞİŞİKLİK: LoadGame artık doğrudan çağrılmıyor, varlık kontrolü için kullanılıyor. ---
-        DocumentReference docRef = FirebaseManager.instance.db.Collection("users").Document(FirebaseManager.instance.UserID);
-        var snapshot = await docRef.GetSnapshotAsync();
-        bool hasSaveData = snapshot.Exists;
-        
-        if (this == null) return;
-        
-        loadingIndicator.SetActive(false);
-        
-        if (hasSaveData)
-        {
-            // Eğer kayıt varsa, "Continue" butonunu göster ve kayıtlı kullanıcı adını yükle.
-            primaryActionButtonText.text = "Continue";
-            newGameButton.gameObject.SetActive(true);
-
-            // Profili sunucudan çek. Bu, UI'ı otomatik olarak güncelleyecektir.
-            await PlayerProfileManager.instance.FetchUserProfile();
-        }
-        else
-        {
-            // Eğer kayıt yoksa, "Play" butonunu göster.
-            primaryActionButtonText.text = "Play";
-            newGameButton.gameObject.SetActive(false);
-
-            // --- KÖK NEDEN ÇÖZÜMÜ ---
-            // Yeni oyuncu için sunucuda hemen bir kayıt oluştur.
-            // Bu, profil panelinin ilk kullanımdan itibaren doğru çalışmasını sağlar
-            // ve "veri bulunamadı" hatalarını tamamen ortadan kaldırır.
-            Debug.Log("No save data found. Creating initial player record on the server...");
-            string defaultUsername = $"Pilot-{FirebaseManager.instance.UserID.Substring(0, 5)}";
-            // Bu çağrı hem sunucuda kayıt oluşturur hem de OnProfileUpdated ile yerel veriyi günceller.
-            await PlayerProfileManager.instance.ChangeUsername(defaultUsername);
-            Debug.Log("Initial player record created.");
-        }
-        
-        primaryActionButton.interactable = true;
     }
 
     private async Task FetchAndDisplayNews()
@@ -149,42 +132,56 @@ public class MainMenu : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Sadece geliştirme amaçlı kullanılan bu metot, mevcut Firebase kullanıcısının oturumunu kapatır
-    /// ve yeni bir kullanıcı olarak test yapabilmek için sahneyi yeniden yükler.
-    /// </summary>
     public void OnSignOutDebugButtonClicked()
     {
         if (FirebaseManager.instance?.auth != null)
         {
             Debug.LogWarning("--- DEVELOPER ACTION: Signing out current Firebase user. ---");
-            FirebaseManager.instance.auth.SignOut();
+            // DEĞİŞİKLİK: Merkezi oturum kapatma metodunu kullan.
+            PlayerProfileManager.instance.SignOut();
             // Sahneyi yeniden yükleyerek temiz bir başlangıç yap ve yeni bir anonim kullanıcı oluşturulmasını sağla.
             SceneManager.LoadScene(SceneManager.GetActiveScene().name);
         }
     }
 
-    public async void OnGoogleSignInButtonClicked()
+    /// <summary>
+    /// Profil güncelleme olayı tetiklendiğinde çağrılır.
+    /// </summary>
+    private void OnProfileUpdatedHandler()
     {
+        // UI güncelleme işlemini arka planda başlat.
+        _ = UpdateMenuUIAsync();
+    }
+
+    /// <summary>
+    /// Oyuncunun kayıt durumuna göre ana menü butonlarını günceller.
+    /// </summary>
+    private async Task UpdateMenuUIAsync()
+    {
+        if (FirebaseManager.instance == null || !FirebaseManager.instance.IsInitialized) return;
+
         loadingIndicator.SetActive(true);
         primaryActionButton.interactable = false;
-        newGameButton.interactable = false;
 
-        var (success, message) = await PlayerProfileManager.instance.SignInWithGoogleAsync();
+        DocumentReference docRef = FirebaseManager.instance.db.Collection("users").Document(FirebaseManager.instance.UserID);
+        var snapshot = await docRef.GetSnapshotAsync();
+        bool hasSaveData = snapshot.Exists;
 
-        if (success)
+        if (this == null) return;
+
+        loadingIndicator.SetActive(false);
+
+        if (hasSaveData)
         {
-            Debug.Log("Google ile giriş başarılı, oyun sahnesine geçiliyor.");
-            // Oyunu yüklemek için GameInitializer'a güveniyoruz.
-            SceneManager.LoadScene("GameScene");
+            primaryActionButtonText.text = "Continue";
+            newGameButton.gameObject.SetActive(true);
         }
         else
         {
-            Debug.LogError($"Google ile giriş başarısız: {message}");
-            // TODO: Hata mesajını kullanıcıya bir panelde göster.
-            loadingIndicator.SetActive(false);
-            primaryActionButton.interactable = true;
-            newGameButton.interactable = true;
+            primaryActionButtonText.text = "Play";
+            newGameButton.gameObject.SetActive(false);
         }
+
+        primaryActionButton.interactable = true;
     }
 }

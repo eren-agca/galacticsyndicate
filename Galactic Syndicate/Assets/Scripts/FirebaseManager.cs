@@ -5,6 +5,7 @@ using Firebase;
 using Firebase.Auth;
 using Firebase.Firestore;
 using System.Threading.Tasks;
+using System; // Exception sınıfı için eklendi
 
 public class FirebaseManager : MonoBehaviour
 {
@@ -33,36 +34,47 @@ public class FirebaseManager : MonoBehaviour
 
     public async Task InitializeFirebase()
     {
-        var dependencyStatus = await FirebaseApp.CheckAndFixDependenciesAsync();
-        if (dependencyStatus == DependencyStatus.Available)
+        // --- YENİ: Hata Yakalama Bloğu ---
+        // Bu blok, başlatma sırasında oluşabilecek herhangi bir ağ veya yapılandırma
+        // hatasını yakalayarak oyunun kilitlenmesini önler ve sorunu net bir şekilde loglar.
+        try
         {
-            app = FirebaseApp.DefaultInstance;
-            auth = FirebaseAuth.DefaultInstance;
-            db = FirebaseFirestore.DefaultInstance;
-
-            if (auth.CurrentUser != null)
+            var dependencyStatus = await FirebaseApp.CheckAndFixDependenciesAsync();
+            if (dependencyStatus == DependencyStatus.Available)
             {
-                user = auth.CurrentUser;
-                Debug.Log($"Firebase: User already signed in with UserID: {user.UserId}");
+                app = FirebaseApp.DefaultInstance;
+                auth = FirebaseAuth.DefaultInstance;
+                db = FirebaseFirestore.DefaultInstance;
+
+                if (auth.CurrentUser != null)
+                {
+                    user = auth.CurrentUser;
+                    Debug.Log($"Firebase: Mevcut kullanıcıyla devam ediliyor. UserID: {user.UserId}, IsAnonymous: {user.IsAnonymous}");
+                }
+                else
+                {
+                    Debug.Log("Firebase: Mevcut kullanıcı yok. Anonim olarak giriş yapılıyor...");
+                    AuthResult authResult = await auth.SignInAnonymouslyAsync();
+                    user = authResult.User;
+                    Debug.Log($"Firebase: Anonim giriş başarılı. UserID: {user.UserId}");
+                }
+                
+                IsInitialized = true;
+                Debug.LogWarning("Firebase başlatıldı. Diğer sistemler aktive ediliyor...");
+
+                // Hazır olduğumuzu diğer yöneticilere bildir.
+                AnalyticsManager.instance?.OnFirebaseInitialized();
             }
             else
             {
-                AuthResult authResult = await auth.SignInAnonymouslyAsync();
-                user = authResult.User;
-                Debug.Log($"Firebase: Anonymously signed in with UserID: {user.UserId}");
+                Debug.LogError($"Firebase bağımlılıkları çözülemedi: {dependencyStatus}");
             }
-            
-            IsInitialized = true;
-            Debug.LogWarning("Firebase initialized. Waiting for 500ms for systems to settle...");
-            await Task.Delay(500);
-
-            // Hazır olduğumuzu diğer yöneticilere bildir.
-            AnalyticsManager.instance?.OnFirebaseInitialized();
-            // Gelecekte eklenebilecek diğer yöneticiler de buradan çağrılabilir.
         }
-        else
+        catch (Exception e)
         {
-            Debug.LogError($"Could not resolve all Firebase dependencies: {dependencyStatus}");
+            Debug.LogError($"!!! KRİTİK HATA: Firebase başlatılamadı. Oyuncu kimliği alınamadı. Hata: {e}");
+            // İsteğe bağlı: Kullanıcıya bir hata mesajı göster.
+            // UIManager.instance?.ShowNotification("Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edip tekrar deneyin.");
         }
     }
 }
