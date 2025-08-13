@@ -1,4 +1,4 @@
-// PlayerProfileUI.cs - DÜZELTİLMİŞ HALİ
+// PlayerProfileUI.cs - DÜZELTİLMİŞ VERSİYON
 
 using UnityEngine;
 using TMPro;
@@ -19,65 +19,72 @@ public class PlayerProfileUI : MonoBehaviour
     public GameObject loadingIndicator;
     
     [Header("Username Section")]
-    [Tooltip("Mevcut kullanıcı adını gösteren metin alanı.")]
     public TextMeshProUGUI usernameText; 
-    [Tooltip("Yeni kullanıcı adının girileceği alan.")]
     public TMP_InputField usernameInputField;
-    [Tooltip("İsim değiştirme işlemini başlatan buton.")]
     public Button updateUsernameButton;
-    [Tooltip("Misafir hesabını Google'a bağlayan buton.")]
     public Button linkWithGoogleButton;
 
     private Coroutine imageLoadCoroutine;
-    private bool isLoadingProfile = false; // Panel açılırken profil yükleme durumu
-    private bool isToggling = false; // Panel toggle işlemi devam ediyor mu?
+    private bool isLoadingProfile = false;
+    private bool isToggling = false;
+    private bool isEventSubscribed = false; // EVENT ABONELİK DURUMU TAKIBI
 
     void Start()
     {
         if (profilePanel != null) profilePanel.SetActive(false);
         if (loadingIndicator != null) loadingIndicator.SetActive(false);
         
-        // Debug için log ekleyelim
         Debug.Log("[PlayerProfileUI] Component initialized");
     }
 
     void OnEnable()
     {
         Debug.Log("[PlayerProfileUI] OnEnable called");
-        if (PlayerProfileManager.instance != null)
-        {
-            PlayerProfileManager.instance.OnProfileUpdated += UpdateUI;
-        }
-        
-        // OnEnable'da UpdateUI çağırmayalım çünkü panel kapalıyken tetikleniyor olabilir
-        // UpdateUI sadece panel açıkken çağrılmalı
+        SubscribeToEvents();
     }
 
     void OnDisable()
     {
         Debug.Log("[PlayerProfileUI] OnDisable called");
-        if (PlayerProfileManager.instance != null)
+        UnsubscribeFromEvents();
+    }
+
+    void OnDestroy()
+    {
+        UnsubscribeFromEvents();
+    }
+
+    // EVENT YÖNETİMİNİ AYRI METODLARA ÇEKTİK
+    private void SubscribeToEvents()
+    {
+        if (!isEventSubscribed && PlayerProfileManager.instance != null)
         {
-            PlayerProfileManager.instance.OnProfileUpdated -= UpdateUI;
+            PlayerProfileManager.instance.OnProfileUpdated += UpdateUI;
+            isEventSubscribed = true;
+            Debug.Log("[PlayerProfileUI] Subscribed to OnProfileUpdated event");
         }
     }
 
-    /// <summary>
-    /// Profil panelini açar veya kapatır.
-    /// Panel açılırken, her zaman en güncel veriyi sunucudan çeker.
-    /// </summary>
+    private void UnsubscribeFromEvents()
+    {
+        if (isEventSubscribed && PlayerProfileManager.instance != null)
+        {
+            PlayerProfileManager.instance.OnProfileUpdated -= UpdateUI;
+            isEventSubscribed = false;
+            Debug.Log("[PlayerProfileUI] Unsubscribed from OnProfileUpdated event");
+        }
+    }
+
     public async void TogglePanel()
     {
-        Debug.Log($"[PlayerProfileUI] TogglePanel called. Current panel state: {(profilePanel != null ? profilePanel.activeSelf : "null")}, isToggling: {isToggling}");
+        Debug.Log($"[PlayerProfileUI] TogglePanel called. Panel active: {(profilePanel != null ? profilePanel.activeSelf : "null")}, isToggling: {isToggling}");
         
-        // Zaten bir toggle işlemi devam ediyorsa, yeni işlem başlatma
         if (isToggling)
         {
-            Debug.LogWarning("[PlayerProfileUI] Toggle already in progress. Ignoring new toggle request.");
+            Debug.LogWarning("[PlayerProfileUI] Toggle already in progress. Ignoring.");
             return;
         }
 
-        // Panel referansı kontrol et
         if (profilePanel == null)
         {
             Debug.LogError("[PlayerProfileUI] profilePanel is null!");
@@ -92,15 +99,24 @@ public class PlayerProfileUI : MonoBehaviour
             
             if (isPanelCurrentlyActive)
             {
-                // Panel açıksa, sadece kapat
                 Debug.Log("[PlayerProfileUI] Closing panel");
-                profilePanel.SetActive(false);
+                ClosePanel();
             }
             else
             {
-                // Panel kapalıysa, açma işlemini başlat
-                Debug.Log("[PlayerProfileUI] Opening panel and loading profile data");
-                await OpenPanelAndLoadProfile();
+                Debug.Log("[PlayerProfileUI] Opening panel");
+                await OpenPanel();
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"[PlayerProfileUI] Exception in TogglePanel: {e.Message}");
+            Debug.LogError($"[PlayerProfileUI] Stack trace: {e.StackTrace}");
+            
+            // Hata durumunda paneli güvenli şekilde kapat
+            if (profilePanel != null && profilePanel.activeSelf)
+            {
+                ClosePanel();
             }
         }
         finally
@@ -110,7 +126,16 @@ public class PlayerProfileUI : MonoBehaviour
         }
     }
 
-    private async Task OpenPanelAndLoadProfile()
+    private void ClosePanel()
+    {
+        if (profilePanel != null)
+        {
+            profilePanel.SetActive(false);
+            Debug.Log("[PlayerProfileUI] Panel closed");
+        }
+    }
+
+    private async Task OpenPanel()
     {
         if (isLoadingProfile)
         {
@@ -122,21 +147,19 @@ public class PlayerProfileUI : MonoBehaviour
         
         try
         {
-            // Paneli hemen göster
-            Debug.Log("[PlayerProfileUI] Setting panel active to true");
+            // 1. ÖNCE PANELİ AÇ
+            Debug.Log("[PlayerProfileUI] Setting panel active");
             profilePanel.SetActive(true);
             
-            // Kısa bir bekle - UI'ın güncellenmesi için
-            await Task.Yield();
-            
-            // Panel gerçekten açık mı kontrol et
-            if (!profilePanel.activeSelf)
+            // 2. UI ELEMENT VALİDASYONU
+            if (!ValidateUIElements())
             {
-                Debug.LogError("[PlayerProfileUI] Panel failed to activate!");
+                Debug.LogError("[PlayerProfileUI] UI validation failed");
+                ClosePanel();
                 return;
             }
             
-            // Loading göstergesini aktifleştir
+            // 3. LOADING GÖSTERGESİNİ AKTIVE ET
             if (loadingIndicator != null) 
             {
                 loadingIndicator.SetActive(true);
@@ -145,70 +168,92 @@ public class PlayerProfileUI : MonoBehaviour
             
             SetButtonsInteractable(false);
 
-            // PlayerProfileManager kontrolü
+            // 4. MANAGER KONTROLÜ
             if (PlayerProfileManager.instance == null)
             {
                 Debug.LogError("[PlayerProfileUI] PlayerProfileManager.instance is null!");
                 ShowFeedback("Profil sistemi bulunamadı!", false);
-                profilePanel.SetActive(false);
+                ClosePanel();
                 return;
             }
 
-            // Profil verilerini çek
+            // 5. PROFİL VERİSİNİ ÇEK
             Debug.Log("[PlayerProfileUI] Fetching user profile...");
-            await PlayerProfileManager.instance.FetchUserProfile();
+            
+            // TASK TIMEOUT EKLEDİK
+            var profileTask = PlayerProfileManager.instance.FetchUserProfile();
+            var timeoutTask = Task.Delay(10000); // 10 saniye timeout
+            
+            var completedTask = await Task.WhenAny(profileTask, timeoutTask);
+            
+            if (completedTask == timeoutTask)
+            {
+                Debug.LogError("[PlayerProfileUI] Profile fetch timed out");
+                ShowFeedback("Profil verisi yüklenemedi (timeout).", false);
+                ClosePanel();
+                return;
+            }
+
+            await profileTask; // Gerçek task'i bekle
             Debug.Log("[PlayerProfileUI] Profile data fetched successfully");
             
-            // Son kontrol: Panel hala açık mı?
+            // 6. SON KONTROLLER
             if (profilePanel != null && profilePanel.activeSelf)
             {
-                // UI'ı güncelle (OnProfileUpdated event'i otomatik olarak tetiklenir)
-                Debug.Log("[PlayerProfileUI] Calling UpdateUI");
+                Debug.Log("[PlayerProfileUI] Manually calling UpdateUI");
                 UpdateUI();
             }
             else
             {
-                Debug.LogWarning("[PlayerProfileUI] Panel was closed during loading process");
+                Debug.LogWarning("[PlayerProfileUI] Panel was closed during loading");
             }
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"[PlayerProfileUI] Error while opening panel: {e.Message}");
-            Debug.LogError($"[PlayerProfileUI] Stack trace: {e.StackTrace}");
+            Debug.LogError($"[PlayerProfileUI] Error in OpenPanel: {e.Message}");
             ShowFeedback("Profil verisi yüklenemedi.", false);
-            
-            // Hata durumunda paneli güvenli bir şekilde kapat
-            if (profilePanel != null)
-            {
-                profilePanel.SetActive(false);
-            }
+            ClosePanel();
         }
         finally
         {
-            // İşlem bittiğinde loading'i kapat ve butonları aktifleştir
             if (loadingIndicator != null) 
             {
                 loadingIndicator.SetActive(false);
-                Debug.Log("[PlayerProfileUI] Loading indicator deactivated");
             }
             
             SetButtonsInteractable(true);
             isLoadingProfile = false;
-            
             Debug.Log("[PlayerProfileUI] Panel opening process completed");
         }
     }
 
+    private bool ValidateUIElements()
+    {
+        if (profilePanel == null)
+        {
+            Debug.LogError("[PlayerProfileUI] profilePanel is null");
+            return false;
+        }
+        
+        if (usernameText == null)
+        {
+            Debug.LogError("[PlayerProfileUI] usernameText is null");
+            return false;
+        }
+        
+        // Diğer kritik UI elementlerini de kontrol et
+        return true;
+    }
+
     private void UpdateUI()
     {
-        // GameObject yok edilmişse hiçbir şey yapma
+        // EXTRA GÜVENLİK KONTROLLERI
         if (this == null || gameObject == null)
         {
             Debug.LogWarning("[PlayerProfileUI] GameObject is null in UpdateUI");
             return;
         }
 
-        // Panel aktif değilse UpdateUI yapmaya gerek yok
         if (profilePanel == null || !profilePanel.activeSelf)
         {
             Debug.Log("[PlayerProfileUI] UpdateUI called but panel is not active");
@@ -221,41 +266,77 @@ public class PlayerProfileUI : MonoBehaviour
             return;
         }
 
-        Debug.Log($"[PlayerProfileUI] UpdateUI - Username: {PlayerProfileManager.instance.PlayerUsername}");
-
-        // Username'i güncelle
-        if (usernameText != null)
+        try
         {
-            usernameText.text = PlayerProfileManager.instance.PlayerUsername ?? "Misafir";
-        }
+            Debug.Log($"[PlayerProfileUI] UpdateUI - Username: {PlayerProfileManager.instance.PlayerUsername}");
 
-        // Profil resmini yükle
-        if (!string.IsNullOrEmpty(PlayerProfileManager.instance.ProfilePictureURL))
+            // Username'i güncelle
+            if (usernameText != null)
+            {
+                string displayName = PlayerProfileManager.instance.PlayerUsername ?? "Misafir";
+                usernameText.text = displayName;
+                Debug.Log($"[PlayerProfileUI] Username set to: {displayName}");
+            }
+
+            // Profil resmini yükle
+            LoadProfilePicture();
+
+            // Link butonu kontrolü
+            UpdateLinkButtonVisibility();
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"[PlayerProfileUI] Exception in UpdateUI: {e.Message}");
+            // UI güncellemesi hatası panel kapanmasına sebep olmamalı
+        }
+    }
+
+    private void LoadProfilePicture()
+    {
+        try
         {
             if (imageLoadCoroutine != null)
             {
                 StopCoroutine(imageLoadCoroutine);
             }
-            imageLoadCoroutine = StartCoroutine(LoadImageFromUrl(PlayerProfileManager.instance.ProfilePictureURL, profilePicture));
-        }
-        else
-        {
-            if (profilePicture != null)
+
+            if (!string.IsNullOrEmpty(PlayerProfileManager.instance.ProfilePictureURL))
             {
-                profilePicture.sprite = null;
-                profilePicture.color = new Color(1, 1, 1, 0.2f);
+                imageLoadCoroutine = StartCoroutine(LoadImageFromUrl(PlayerProfileManager.instance.ProfilePictureURL, profilePicture));
+            }
+            else
+            {
+                if (profilePicture != null)
+                {
+                    profilePicture.sprite = null;
+                    profilePicture.color = new Color(1, 1, 1, 0.2f);
+                }
             }
         }
-
-        // Sadece misafir kullanıcılar için "Google ile Kaydet" butonunu göster
-        if (linkWithGoogleButton != null)
+        catch (System.Exception e)
         {
-            bool shouldShowLinkButton = PlayerProfileManager.instance.IsGuestUser;
-            linkWithGoogleButton.gameObject.SetActive(shouldShowLinkButton);
-            Debug.Log($"[PlayerProfileUI] Link button visibility: {shouldShowLinkButton} (IsGuest: {PlayerProfileManager.instance.IsGuestUser})");
+            Debug.LogError($"[PlayerProfileUI] Error loading profile picture: {e.Message}");
         }
     }
 
+    private void UpdateLinkButtonVisibility()
+    {
+        try
+        {
+            if (linkWithGoogleButton != null)
+            {
+                bool shouldShowLinkButton = PlayerProfileManager.instance.IsGuestUser;
+                linkWithGoogleButton.gameObject.SetActive(shouldShowLinkButton);
+                Debug.Log($"[PlayerProfileUI] Link button visibility: {shouldShowLinkButton} (IsGuest: {PlayerProfileManager.instance.IsGuestUser})");
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"[PlayerProfileUI] Error updating link button: {e.Message}");
+        }
+    }
+
+    // Diğer metodlar aynı kalır...
     public void OnChangePictureClicked()
     {
         Debug.Log("[PlayerProfileUI] Change picture button clicked");
@@ -397,4 +478,18 @@ public class PlayerProfileUI : MonoBehaviour
             }
         }
     }
+    // PlayerProfileUI.cs içine ekleyin
+    private void Update()
+    {
+        if (profilePanel != null && profilePanel.activeSelf != lastPanelState)
+        {
+            Debug.LogWarning($"[DEBUG] Panel state changed from {lastPanelState} to {profilePanel.activeSelf}");
+            lastPanelState = profilePanel.activeSelf;
+        
+            // Stack trace ile hangi kod parçasının panel durumunu değiştirdiğini bulun
+            Debug.LogWarning($"[DEBUG] Stack trace: {System.Environment.StackTrace}");
+        }
+    }
+
+    private bool lastPanelState = false;
 }

@@ -70,18 +70,21 @@ public class PlayerProfileManager : MonoBehaviour
 
         auth = FirebaseAuth.DefaultInstance;
         
-        // Google SignIn yapılandırması
-        if (!string.IsNullOrEmpty(webClientId) && webClientId != "YOUR-WEB-CLIENT-ID-HERE")
+        // --- KESİN ÇÖZÜM: Google Sign-In yapılandırmasını daha sağlam ve daha bilgilendirici hale getir ---
+        // Bu, "hiçbir şey olmuyor" hatasının en yaygın sebebini (eksik Web Client ID) tespit eder.
+        if (string.IsNullOrEmpty(webClientId) || webClientId.Contains("YOUR-WEB-CLIENT-ID-HERE"))
         {
+            // Hata mesajı, geliştiriciye tam olarak ne yapması gerektiğini söyler.
+            Debug.LogError("!!! KRİTİK YAPILANDIRMA HATASI !!!\n'Web Client Id' alanı, Unity Editor'deki 'PlayerProfileManager' bileşeninde ayarlanmamış. Google ile giriş bu olmadan ÇALIŞAMAZ. Lütfen sahnenizdeki 'PlayerProfileManager' objesini bulun ve Firebase konsolundan aldığınız Web Client ID'yi ilgili alana yapıştırın.");
+        }
+        else
+        {
+            Debug.Log($"[PlayerProfileManager] GoogleSignIn yapılandırması şu Web Client ID ile yapılıyor: {webClientId}");
             GoogleSignIn.Configuration = new GoogleSignInConfiguration
             {
                 RequestIdToken = true,
                 WebClientId = webClientId
             };
-        }
-        else
-        {
-            Debug.LogWarning("Web Client ID not set in PlayerProfileManager. Google Sign-In will not work.");
         }
 
         Debug.Log("PlayerProfileManager Auth service initialized");
@@ -262,19 +265,25 @@ public class PlayerProfileManager : MonoBehaviour
         try
         {
             Debug.Log("[LinkAccountWithGoogle] Google Sign-In başlatılıyor...");
-            var googleUser = await GoogleSignIn.DefaultInstance.SignIn();
-            
-            if (googleUser == null)
+            Task<GoogleSignInUser> signInTask = GoogleSignIn.DefaultInstance.SignIn();
+            await signInTask;
+
+            if (signInTask.IsCanceled)
             {
-                return (false, "Google giriş iptal edildi.");
+                return (false, "Google girişi kullanıcı tarafından iptal edildi.");
+            }
+            if (signInTask.IsFaulted)
+            {
+                Debug.LogError($"[LinkAccountWithGoogle] GoogleSignIn task failed with exception: {signInTask.Exception}");
+                return (false, "Yapılandırma hatası! Lütfen Firebase konsolundaki SHA-1 parmak izini kontrol edin. (Hata Kodu: 10)");
             }
 
+            GoogleSignInUser googleUser = signInTask.Result;
             var credential = GoogleAuthProvider.GetCredential(googleUser.IdToken, null);
             var user = auth.CurrentUser;
             
             Debug.Log("[LinkAccountWithGoogle] Hesap bağlanıyor...");
             await user.LinkWithCredentialAsync(credential);
-
             Debug.Log($"[LinkAccountWithGoogle] Başarıyla bağlandı: {user.UserId}");
 
             await FetchUserProfile();
@@ -315,12 +324,19 @@ public class PlayerProfileManager : MonoBehaviour
             // Google ile giriş yapmayı dene
             Debug.Log("[SignInWithGoogle] GoogleSignIn.DefaultInstance.SignIn() çağrılıyor...");
             Task<GoogleSignInUser> signInTask = GoogleSignIn.DefaultInstance.SignIn();
-            GoogleSignInUser googleUser = await signInTask;
+            await signInTask;
 
-            if (googleUser == null)
+            if (signInTask.IsCanceled)
             {
-                return (false, "Google giriş iptal edildi.");
+                return (false, "Google girişi kullanıcı tarafından iptal edildi.");
             }
+            if (signInTask.IsFaulted)
+            {
+                Debug.LogError($"[SignInWithGoogle] GoogleSignIn task failed with exception: {signInTask.Exception}");
+                return (false, "Yapılandırma hatası! Lütfen Firebase konsolundaki SHA-1 parmak izini kontrol edin. (Hata Kodu: 10)");
+            }
+
+            GoogleSignInUser googleUser = signInTask.Result;
 
             // Google'dan alınan ID Token ile Firebase kimlik bilgisi oluştur
             Debug.Log("[SignInWithGoogle] Firebase kimlik bilgisi oluşturuluyor...");

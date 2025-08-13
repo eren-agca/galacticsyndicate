@@ -14,7 +14,7 @@ public class GoogleAuthentication : MonoBehaviour
     public TMP_Text userNameTxt;
     public TMP_Text userEmailTxt;
     public Image profilePic;
-    public GameObject profilePanel;
+    // profilePanel referansını kaldırdık - PlayerProfileUI kendi panelini yönetecek
     public Button signInButton;
     public Button signOutButton;
     public GameObject loadingIndicator; // Loading göstergesi eklendi
@@ -26,8 +26,32 @@ public class GoogleAuthentication : MonoBehaviour
     {
         // Başlangıçta UI'ı temiz duruma getir
         InitializeUI();
+
+        // DEBUG: Button event kontrolü
+        if (signInButton != null)
+        {
+            Debug.Log("[DEBUG] Sign-In button found and active");
+
+            // Button click event'ini manuel olarak ekleyelim (eğer Inspector'da atanmamışsa)
+            signInButton.onClick.RemoveAllListeners();
+            signInButton.onClick.AddListener(() => {
+                Debug.Log("[DEBUG] Sign-In button clicked via code listener!");
+                OnSignIn();
+            });
+        }
+        else
+        {
+            Debug.LogError("[DEBUG] Sign-In button is NULL!");
+        }
     }
 
+    // Ayrıca bu test metodunu da ekleyin:
+    [System.Diagnostics.Conditional("UNITY_EDITOR")]
+    public void TestButtonClick()
+    {
+        Debug.Log("[DEBUG] Manual test button click");
+        OnSignIn();
+    }
     void OnEnable()
     {
         // PlayerProfileManager'daki profil güncelleme olayına abone ol
@@ -65,7 +89,7 @@ public class GoogleAuthentication : MonoBehaviour
         if (loadingIndicator != null) loadingIndicator.SetActive(false);
         
         SetButtonsInteractable(true);
-        UpdatePanelVisibility(false); // Başlangıçta giriş panelini göster
+        UpdateSignInButtonVisibility(); // Sadece sign-in butonunu kontrol et
     }
 
     /// <summary>
@@ -107,18 +131,20 @@ public class GoogleAuthentication : MonoBehaviour
             {
                 Debug.LogError($"Google giriş hatası: {message}");
                 ShowFeedback(message, false);
-                SetButtonsInteractable(true);
             }
         }
         catch (System.Exception e)
         {
             Debug.LogError($"Google Authentication exception: {e.Message}");
             ShowFeedback("Beklenmedik bir hata oluştu.", false);
-            SetButtonsInteractable(true);
         }
         finally
         {
             if (loadingIndicator != null) loadingIndicator.SetActive(false);
+            // --- KESİN ÇÖZÜM: Butonların kilitlenmesini önle ---
+            // İşlem başarılı da olsa, başarısız da olsa veya bir istisna fırlatsa da
+            // butonların her zaman tekrar tıklanabilir olmasını garantiler.
+            SetButtonsInteractable(true);
             isProcessing = false;
         }
     }
@@ -158,6 +184,8 @@ public class GoogleAuthentication : MonoBehaviour
         finally
         {
             isProcessing = false;
+            // Çıkış işleminden sonra da butonların tekrar aktif olmasını garantile.
+            SetButtonsInteractable(true);
         }
     }
 
@@ -209,7 +237,7 @@ public class GoogleAuthentication : MonoBehaviour
         // Profil resmini yükle
         LoadProfilePicture();
         
-        UpdatePanelVisibility(true); // Profil panelini göster
+        UpdateSignInButtonVisibility(); // Sadece sign-in butonu kontrolü
     }
 
     private void UpdateUIForGuestState()
@@ -222,7 +250,20 @@ public class GoogleAuthentication : MonoBehaviour
             profilePic.color = new Color(1, 1, 1, 0.2f);
         }
         
-        UpdatePanelVisibility(false); // Giriş panelini göster
+        UpdateSignInButtonVisibility(); // Sadece sign-in butonu kontrolü
+    }
+
+    private void UpdateSignInButtonVisibility()
+    {
+        // Sadece sign-in butonunu kontrol et
+        // ProfilePanel'i PlayerProfileUI yönetsin
+        bool isSignedIn = IsUserSignedInWithGoogle();
+        
+        if (signInButton != null) 
+        {
+            signInButton.gameObject.SetActive(!isSignedIn);
+            Debug.Log($"[GoogleAuthentication] Sign-in button visibility: {!isSignedIn}");
+        }
     }
 
     private void LoadProfilePicture()
@@ -253,15 +294,6 @@ public class GoogleAuthentication : MonoBehaviour
                 }
             }
         }
-    }
-
-    private void UpdatePanelVisibility(bool showProfilePanel)
-    {
-        if (signInButton != null) 
-            signInButton.gameObject.SetActive(!showProfilePanel);
-            
-        if (profilePanel != null) 
-            profilePanel.SetActive(showProfilePanel);
     }
 
     private IEnumerator LoadImageFromUrl(string url)
@@ -311,4 +343,5 @@ public class GoogleAuthentication : MonoBehaviour
             Debug.Log($"Feedback: {message}");
         }
     }
+    
 }
